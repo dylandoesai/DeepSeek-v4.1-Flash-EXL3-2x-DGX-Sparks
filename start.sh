@@ -1125,11 +1125,22 @@ for p in /opt/dsv41/patch_suppress_stops_in_reasoning.py \
          /opt/dsv41/patch_engram_file.py \
          /opt/dsv41/patch_h2d_stage.py \
          /opt/dsv41/patch_sm120_block64.py \
-         /opt/dsv41/patch_memory_log.py; do
-    if [ -f "$p" ]; then
-        python3 "$p" || say "WARN: $p returned $?"
-    fi
+         /opt/dsv41/patch_memory_log.py \
+         /opt/dsv41/patch_load_speedups.py; do
+    [ -f "$p" ] && PATCHES+=("$p")
 done
+# One interpreter for every patch: most of them import vllm only to find its path (~1.9 s each, ~14 s a boot); one
+# process pays that once. Each patch still runs as __main__ with its own argv; a failing one warns and the rest run.
+python3 -c 'import runpy, sys
+for p in sys.argv[1:]:
+    sys.argv = [p]
+    try:
+        runpy.run_path(p, run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            print("WARN: %s returned %s" % (p, e.code), flush=True)
+    except Exception as e:
+        print("WARN: %s raised %r" % (p, e), flush=True)' "${PATCHES[@]}"
 say "launching: vllm serve ${MODEL_DIR} ${ARGS[*]}"
 exec vllm serve "${MODEL_DIR}" "${ARGS[@]}"
 EOF
@@ -1222,11 +1233,22 @@ for p in /opt/dsv41/patch_suppress_stops_in_reasoning.py \
          /opt/dsv41/patch_engram_file.py \
          /opt/dsv41/patch_h2d_stage.py \
          /opt/dsv41/patch_sm120_block64.py \
-         /opt/dsv41/patch_memory_log.py; do
-    if [ -f "$p" ]; then
-        python3 "$p" || say "WARN: $p returned $?"
-    fi
+         /opt/dsv41/patch_memory_log.py \
+         /opt/dsv41/patch_load_speedups.py; do
+    [ -f "$p" ] && PATCHES+=("$p")
 done
+# One interpreter for every patch: most of them import vllm only to find its path (~1.9 s each, ~14 s a boot); one
+# process pays that once. Each patch still runs as __main__ with its own argv; a failing one warns and the rest run.
+python3 -c 'import runpy, sys
+for p in sys.argv[1:]:
+    sys.argv = [p]
+    try:
+        runpy.run_path(p, run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (None, 0):
+            print("WARN: %s returned %s" % (p, e.code), flush=True)
+    except Exception as e:
+        print("WARN: %s raised %r" % (p, e), flush=True)' "${PATCHES[@]}"
 say "joining TP2 at ${HEAD_IP}:${MASTER_PORT} as rank 1"
 exec vllm serve "${MODEL_DIR}" "${ARGS[@]}"
 EOF
@@ -1316,6 +1338,7 @@ launch_cluster() {
     scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/engram_file_backend.py" "${WORKER_SSH}:/tmp/engram_file_backend.py"
     scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/engram_layout.py" "${WORKER_SSH}:/tmp/engram_layout.py"
     scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/patch_memory_log.py" "${WORKER_SSH}:/tmp/patch_memory_log.py"
+    scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/patch_load_speedups.py" "${WORKER_SSH}:/tmp/patch_load_speedups.py"
     scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/patch_h2d_stage.py" "${WORKER_SSH}:/tmp/patch_h2d_stage.py"
     scp -q -o BatchMode=yes "$SCRIPT_DIR/overlay/patch_sm120_block64.py" "${WORKER_SSH}:/tmp/patch_sm120_block64.py"
     scp -q -o BatchMode=yes "$MEMGUARD_HOST" "${WORKER_SSH}:/tmp/dsv41-memguard.sh"
@@ -1472,6 +1495,7 @@ launch_cluster() {
         -v '/tmp/engram_file_backend.py:/opt/dsv41/engram_file_backend.py:ro' \
         -v '/tmp/engram_layout.py:/opt/dsv41/engram_layout.py:ro' \
         -v '/tmp/patch_memory_log.py:/opt/dsv41/patch_memory_log.py:ro' \
+        -v '/tmp/patch_load_speedups.py:/opt/dsv41/patch_load_speedups.py:ro' \
         -v '/tmp/patch_h2d_stage.py:/opt/dsv41/patch_h2d_stage.py:ro' \
         -v '/tmp/patch_sm120_block64.py:/opt/dsv41/patch_sm120_block64.py:ro' \
         ${worker_packed_args} \
@@ -1512,6 +1536,7 @@ launch_cluster() {
         -v "$SCRIPT_DIR/overlay/engram_file_backend.py:/opt/dsv41/engram_file_backend.py:ro" \
         -v "$SCRIPT_DIR/overlay/engram_layout.py:/opt/dsv41/engram_layout.py:ro" \
         -v "$SCRIPT_DIR/overlay/patch_memory_log.py:/opt/dsv41/patch_memory_log.py:ro" \
+        -v "$SCRIPT_DIR/overlay/patch_load_speedups.py:/opt/dsv41/patch_load_speedups.py:ro" \
         -v "$SCRIPT_DIR/overlay/patch_h2d_stage.py:/opt/dsv41/patch_h2d_stage.py:ro" \
         -v "$SCRIPT_DIR/overlay/patch_sm120_block64.py:/opt/dsv41/patch_sm120_block64.py:ro" \
         "${head_packed_args[@]}" \
