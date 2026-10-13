@@ -604,6 +604,10 @@ preflight() {
             fi
             local need_b avail_b
             need_b=$(( $(du -sb "$MODEL_HOST" | awk '{print $1}') + $(zfs_bytes_for_engram) ))
+            # rsync only sends what the worker lacks: count only the missing bytes. The check demanded room for a full
+            # ~385 GiB copy even with the ~197 GiB replica already in place on the worker, and refused to start.
+            local have_b; have_b="$(worker_ssh "du -sb '$WORKER_MODEL_DIR' '$WORKER_ENGRAM_DIR' 2>/dev/null | awk '{s+=\$1} END{print s+0}'" || echo 0)"
+            need_b=$(( need_b - ${have_b:-0} )); [ "$need_b" -lt 0 ] && need_b=0
             avail_b="$(worker_ssh "df -PB1 '$WORKER_HOME' | awk 'NR==2{print \$4}'" || true)"
             if [ -n "${avail_b:-}" ] && [ "$avail_b" -lt "$need_b" ]; then
                 die "worker has $((avail_b/1024/1024/1024)) GiB free under $WORKER_HOME, need ~$((need_b/1024/1024/1024)) GiB for a local EXL3+Engram copy. Use WEIGHT_SYNC=nfs (default; no local copy) instead of rsync."
